@@ -66,7 +66,7 @@ func (r *PostgresRepository) GetAllPublic(
 		baseQuery := r.db.WithContext(ctx).
 			Model(&models.Post{}).
 			Joins("JOIN users ON users.id = posts.author_id").
-			Where("posts.state_id = ? OR posts.state_id = ?", 2, 5)
+			Where("posts.state_id = ?", 2)
 
 		if err := baseQuery.Count(&total).Error; err != nil {
 			return nil, 0, err
@@ -133,7 +133,7 @@ func (r *PostgresRepository) GetAllPublic(
 			WITH fulltext AS (
 				SELECT p.id
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.search_vector @@ websearch_to_tsquery('spanish_unaccent', ?)
 				ORDER BY ts_rank_cd(
 					p.search_vector,
@@ -145,7 +145,7 @@ func (r *PostgresRepository) GetAllPublic(
 			semantic AS (
 				SELECT p.id
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.embedding IS NOT NULL
 				  AND (p.embedding <=> ?) <= ?
 				ORDER BY p.embedding <=> ?, p.created_at DESC
@@ -154,7 +154,7 @@ func (r *PostgresRepository) GetAllPublic(
 			fuzzy AS (
 				SELECT p.id
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.fuzzy_short IS NOT NULL
 				  AND btrim(p.fuzzy_short) <> ''
 				  AND word_similarity(?, p.fuzzy_short) >= ?
@@ -189,7 +189,7 @@ func (r *PostgresRepository) GetAllPublic(
 						p.created_at DESC
 					) AS rank
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.search_vector @@ websearch_to_tsquery('spanish_unaccent', ?)
 				ORDER BY ts_rank_cd(
 					p.search_vector,
@@ -218,7 +218,7 @@ func (r *PostgresRepository) GetAllPublic(
 						ORDER BY word_similarity(?, p.fuzzy_short) DESC, p.created_at DESC
 					) AS rank
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.fuzzy_short IS NOT NULL
 				  AND btrim(p.fuzzy_short) <> ''
 				  AND word_similarity(?, p.fuzzy_short) >= ?
@@ -265,7 +265,7 @@ func (r *PostgresRepository) GetAllPublic(
 			WITH fulltext AS (
 				SELECT p.id
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.search_vector @@ websearch_to_tsquery('spanish_unaccent', ?)
 				ORDER BY ts_rank_cd(
 					p.search_vector,
@@ -277,7 +277,7 @@ func (r *PostgresRepository) GetAllPublic(
 			fuzzy AS (
 				SELECT p.id
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.fuzzy_short IS NOT NULL
 				  AND btrim(p.fuzzy_short) <> ''
 				  AND word_similarity(?, p.fuzzy_short) >= ?
@@ -309,7 +309,7 @@ func (r *PostgresRepository) GetAllPublic(
 						p.created_at DESC
 					) AS rank
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.search_vector @@ websearch_to_tsquery('spanish_unaccent', ?)
 				ORDER BY ts_rank_cd(
 					p.search_vector,
@@ -325,7 +325,7 @@ func (r *PostgresRepository) GetAllPublic(
 						ORDER BY word_similarity(?, p.fuzzy_short) DESC, p.created_at DESC
 					) AS rank
 				FROM posts p
-				WHERE p.state_id = 2 OR p.state_id = 5
+				WHERE p.state_id = 2
 				  AND p.fuzzy_short IS NOT NULL
 				  AND btrim(p.fuzzy_short) <> ''
 				  AND word_similarity(?, p.fuzzy_short) >= ?
@@ -370,7 +370,7 @@ func (r *PostgresRepository) GetAllPublic(
 		countSQL = `
 			SELECT COUNT(*)
 			FROM posts p
-			WHERE p.state_id = 2 OR p.state_id = 5
+			WHERE p.state_id = 2
 			  AND p.embedding IS NOT NULL
 			  AND (p.embedding <=> ?) <= ?
 		`
@@ -388,7 +388,7 @@ func (r *PostgresRepository) GetAllPublic(
 				p.created_at
 			FROM posts p
 			JOIN users u ON u.id = p.author_id
-			WHERE p.state_id = 2 OR p.state_id = 5
+			WHERE p.state_id = 2
 			  AND p.embedding IS NOT NULL
 			  AND (p.embedding <=> ?) <= ?
 			ORDER BY p.embedding <=> ?, p.created_at DESC
