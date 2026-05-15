@@ -22,6 +22,7 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"golang.org/x/time/rate"
 )
 
 var ctx = context.Background()
@@ -77,7 +78,7 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// r.Use(middleware.RateLimiterMiddleware(rate.Every(time.Second/2), 30))
+	r.Use(middleware.RateLimiterMiddleware(rate.Every(time.Second/2), 30))
 
 	// iniciliza las dependencias y casos de uso
 	routes.Init()
