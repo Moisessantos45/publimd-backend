@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invitación a colaborar — Publimd</title>
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Inter", Arial, sans-serif; background-color: #f4f4f5; color: #18181b; }
+.wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e4e4e7; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03); }
+.header { background: #26262a; padding: 32px 40px; text-align: center; }
+.header-logo { color: #a1a1aa; font-size: 14px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; display: block; }
+.header-title { color: #ffffff; font-size: 22px; font-weight: 600; }
+.content { padding: 40px; }
+.greeting { font-size: 18px; font-weight: 600; color: #18181b; margin-bottom: 12px; }
+.body-text { font-size: 15px; color: #52525b; line-height: 1.6; margin-bottom: 24px; }
+.post-box { background: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.post-title { font-weight: 600; color: #18181b; font-size: 16px; }
+.cta-wrapper { text-align: center; margin: 32px 0; }
+.button { background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-block; }
+.footer { background: #fafafa; padding: 24px 40px; text-align: center; border-top: 1px solid #e4e4e7; }
+.footer-copy { color: #a1a1aa; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+<div class="header">
+<span class="header-logo">Publimd</span>
+<div class="header-title">Te han invitado a colaborar</div>
+</div>
+<div class="content">
+<p class="greeting">¡Hola, {{.Name}}!</p>
+<p class="body-text">
+<strong>{{.InviterName}}</strong> te ha invitado a colaborar y formar parte del equipo de autores en el siguiente post:
+</p>
+<div class="post-box">
+<p class="post-title">"{{.PostTitle}}"</p>
+</div>
+<p class="body-text">
+Únete para editar, aportar tus ideas y ayudar a publicar este contenido increíble.
+</p>
+<div class="cta-wrapper">
+<a href="{{.InviteLink}}" class="button">Aceptar invitación</a>
+</div>
+</div>
+<div class="footer">
+<p class="footer-copy">© 2026 Publimd · Todos los derechos reservados</p>
+</div>
+</div>
+</body>
+</html>
