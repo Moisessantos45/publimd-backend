@@ -264,7 +264,14 @@ func (uc *PostUseCase) Update(ctx context.Context, id uint64, authID uint64, pos
 		return fmt.Errorf("only the author or a collaborator with write permission or higher can update this post")
 	}
 
-	updateData := BuildPostUpdateData(post)
+	findPost, err := uc.repo.GetBasicInfoByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("error fetching post: %v", err)
+	}
+
+	isEqualTitle := compareStrings(findPost.Title, post.Title)
+
+	updateData := BuildPostUpdateData(post, isEqualTitle)
 
 	err = uc.repo.WithTransaction(func(repo *PostgresRepository) error {
 
@@ -272,7 +279,7 @@ func (uc *PostUseCase) Update(ctx context.Context, id uint64, authID uint64, pos
 			return err
 		}
 
-		updatedPost, err := uc.repo.GetByID(ctx, id)
+		updatedPost, err := uc.repo.GetInfoEmbeddingByID(ctx, id)
 		if err != nil {
 			return fmt.Errorf("error fetching updated post: %v", err)
 		}

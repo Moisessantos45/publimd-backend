@@ -94,6 +94,8 @@ type PostRepository interface {
 	GetAllRecent(ctx context.Context, userID uint64) ([]PostInfoRecent, error)
 	Create(ctx context.Context, post *models.Post) error
 	GetByID(ctx context.Context, id uint64) (*models.Post, error)
+	GetInfoEmbeddingByID(ctx context.Context, id uint64) (*models.PostInfoEmbedding, error)
+	GetBasicInfoByID(ctx context.Context, id uint64) (*models.PostInfoBasic, error)
 	GetBySlug(ctx context.Context, slug string) (*models.Post, error)
 	GetBasicInfoBySlug(ctx context.Context, slug string) (*models.PostInfoBasic, error)
 	GetBySlugPublic(ctx context.Context, slug string) (*PostInfoDetailed, error)
@@ -117,6 +119,42 @@ type PostService interface {
 	Update(ctx context.Context, id uint64, authID uint64, post *models.Post) error
 	UpdateState(ctx context.Context, id uint64, authID uint64, stateID uint64) error
 	UpdateEmbedding(ctx context.Context, authID uint64, slug string) error
+}
+
+func generateSlug(title string) string {
+	slugNormalized := utils.NormalizeText(title)
+	slugBase := strings.ToLower(strings.TrimSpace(slugNormalized))
+	slugBase = strings.ReplaceAll(slugBase, " ", "-")
+
+	suffix := fmt.Sprintf("-%d", time.Now().UnixNano())
+
+	const maxSlugLen = 55
+	maxBaseLen := maxSlugLen - len(suffix)
+	if maxBaseLen < 1 {
+		maxBaseLen = 1
+	}
+
+	if len(slugBase) > maxBaseLen {
+		slugBase = slugBase[:maxBaseLen]
+		slugBase = strings.TrimRight(slugBase, "-")
+	}
+
+	return slugBase + suffix
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func compareStrings(a string, b string) bool {
+	if strings.TrimSpace(a) == "" && strings.TrimSpace(b) == "" {
+		return true
+	}
+
+	return utils.NormalizeText(a) == utils.NormalizeText(b)
 }
 
 func NewPost(data *models.Post) (*models.Post, error) {
@@ -148,7 +186,7 @@ func NewPost(data *models.Post) (*models.Post, error) {
 
 	post := &models.Post{
 		Slug:         data.Slug,
-		Title:        data.Title,
+		Title:        utils.NormalizeText(data.Title),
 		Content:      data.Content,
 		AuthorID:     data.AuthorID,
 		Tags:         data.Tags,
@@ -160,11 +198,12 @@ func NewPost(data *models.Post) (*models.Post, error) {
 	return post, nil
 }
 
-func BuildPostUpdateData(data *models.Post) map[string]any {
+func BuildPostUpdateData(data *models.Post, changeTitle bool) map[string]any {
 	updateData := make(map[string]any)
 
-	if strings.TrimSpace(data.Title) != "" {
-		updateData["title"] = data.Title
+	if strings.TrimSpace(data.Title) != "" && !changeTitle {
+		updateData["title"] = utils.NormalizeText(data.Title)
+		updateData["slug"] = generateSlug(data.Title)
 	}
 
 	if strings.TrimSpace(data.Content) != "" {
@@ -181,31 +220,4 @@ func BuildPostUpdateData(data *models.Post) map[string]any {
 	}
 
 	return updateData
-}
-
-func generateSlug(title string) string {
-	slugBase := strings.ToLower(strings.TrimSpace(title))
-	slugBase = strings.ReplaceAll(slugBase, " ", "-")
-
-	suffix := fmt.Sprintf("-%d", time.Now().UnixNano())
-
-	const maxSlugLen = 55
-	maxBaseLen := maxSlugLen - len(suffix)
-	if maxBaseLen < 1 {
-		maxBaseLen = 1
-	}
-
-	if len(slugBase) > maxBaseLen {
-		slugBase = slugBase[:maxBaseLen]
-		slugBase = strings.TrimRight(slugBase, "-")
-	}
-
-	return slugBase + suffix
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

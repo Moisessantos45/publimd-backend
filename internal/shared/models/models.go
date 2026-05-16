@@ -42,8 +42,9 @@ type UserBasicInfo struct {
 }
 
 type PostInfoBasic struct {
-	ID   uint64 `json:"id" gorm:"column:id"`
-	Slug string `json:"slug" gorm:"column:slug"`
+	ID    uint64 `json:"id" gorm:"column:id"`
+	Slug  string `json:"slug" gorm:"column:slug"`
+	Title string `json:"title" gorm:"column:title"`
 }
 
 type StatePost struct {
@@ -74,6 +75,14 @@ type Post struct {
 
 	Author User      `json:"-" gorm:"foreignKey:AuthorID"`
 	State  StatePost `json:"-" gorm:"foreignKey:StateID"`
+}
+
+type PostInfoEmbedding struct {
+	ID           uint64          `json:"id" gorm:"primaryKey"`
+	Title        string          `json:"title" gorm:"not null;type:varchar(200)"`
+	Tags         JSONStringArray `json:"tags" gorm:"type:jsonb;default:'[]'"`
+	Category     string          `json:"category" gorm:"type:varchar(100)"`
+	ContentClean string          `json:"-" gorm:"column:content_clean;type:text"`
 }
 
 type Permission struct {

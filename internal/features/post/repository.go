@@ -493,6 +493,25 @@ func (r *PostgresRepository) GetByID(ctx context.Context, id uint64) (*models.Po
 	return &post, nil
 }
 
+func (r *PostgresRepository) GetInfoEmbeddingByID(ctx context.Context, id uint64) (*models.PostInfoEmbedding, error) {
+	var post models.PostInfoEmbedding
+
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT id, title, tags, category, content_clean
+		FROM posts
+		WHERE id = ?
+	`, id).Scan(&post).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &post, nil
+}
+
 func (r *PostgresRepository) GetBySlug(ctx context.Context, slug string) (*models.Post, error) {
 	var post models.Post
 	err := r.db.WithContext(ctx).Where("slug = ?", slug).First(&post).Error
@@ -509,10 +528,28 @@ func (r *PostgresRepository) GetBySlug(ctx context.Context, slug string) (*model
 func (r *PostgresRepository) GetBasicInfoBySlug(ctx context.Context, slug string) (*models.PostInfoBasic, error) {
 	var post models.PostInfoBasic
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT id, slug
+		SELECT id, slug, title
 		FROM posts
 		WHERE slug = ?
 	`, slug).Scan(&post).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &post, nil
+}
+
+func (r *PostgresRepository) GetBasicInfoByID(ctx context.Context, id uint64) (*models.PostInfoBasic, error) {
+	var post models.PostInfoBasic
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT id, slug, title
+		FROM posts
+		WHERE id = ?
+	`, id).Scan(&post).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
