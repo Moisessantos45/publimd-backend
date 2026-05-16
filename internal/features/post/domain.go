@@ -103,6 +103,18 @@ type PostRepository interface {
 	Update(ctx context.Context, id uint64, data map[string]any) error
 	UpdateState(ctx context.Context, id uint64, stateID uint64) error
 	UpdateEmbedding(ctx context.Context, id uint64, embedding any) error
+	InsertOutbox(ctx context.Context, event *models.Outbox) error
+	MarkEmbeddingPendingAndBumpVersion(ctx context.Context, postID uint64) error
+	GetEmbeddingMetaByID(ctx context.Context, postID uint64) (*models.PostEmbeddingMeta, error)
+	ClaimPendingOutboxJobs(ctx context.Context, topic string, limit int) ([]models.Outbox, error)
+	MarkOutboxDone(ctx context.Context, jobID string) error
+	MarkOutboxDoneTx(ctx context.Context, jobID string) error
+	RescheduleOutbox(ctx context.Context, jobID string, attempts int, nextTime time.Time, errMsg string) error
+	MarkOutboxDead(ctx context.Context, jobID string, errMsg string) error
+	UpdateEmbeddingTx(ctx context.Context, postID uint64, vec any) error
+	SetEmbeddingReadyTx(ctx context.Context, postID uint64) error
+	SetEmbeddingFailed(ctx context.Context, postID uint64, errMsg string) error
+	SetEmbeddingProcessing(ctx context.Context, postID uint64) error
 }
 
 type PostService interface {

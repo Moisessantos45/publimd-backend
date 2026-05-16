@@ -16,18 +16,20 @@ import (
 )
 
 var (
-	maker   *utils.PasetoMaker
-	authUc  *auth.AuthUseCase
-	userUc  user.UserService
-	ucPost  post.PostService
-	ucCols  collaborator.CollaboratorService
-	ucPerms permissions.PostPermissionChecker
+	maker      *utils.PasetoMaker
+	authUc     *auth.AuthUseCase
+	userUc     user.UserService
+	ucPost     post.PostService
+	ucCols     collaborator.CollaboratorService
+	ucPerms    permissions.PostPermissionChecker
+	postRepo   post.PostRepository
+	embClient  *embeddings.Client
 )
 
 func Init() {
 	rd := config.Rdb
 	maker = utils.NewPasetoMaker()
-	clientHTPP := embeddings.NewClient()
+	embClient = embeddings.NewClient()
 
 	aRp := auth.NewPostgresRepository(db.DB)
 	authUc = auth.NewAuthUseCase(aRp, rd, maker)
@@ -38,14 +40,18 @@ func Init() {
 	cRp := collaborator.NewPostgresRepository(db.DB)
 	ucPerms = permissions.NewPermissionUseCase(permissions.NewCollaboratorRepoAdapter(cRp))
 
-	pRp := post.NewPostgresRepository(db.DB)
-	ucPost = post.NewPostUseCase(pRp, userUc, ucPerms, clientHTPP)
+	postRepo = post.NewPostgresRepository(db.DB)
+	ucPost = post.NewPostUseCase(postRepo, userUc, ucPerms, embClient)
 
 	ucCols = collaborator.NewCollaboratorUsecase(cRp, rd, maker, ucPerms, ucPost)
 }
 
 func GetSocketDeps() (post.PostService, permissions.PostPermissionChecker) {
 	return ucPost, ucPerms
+}
+
+func GetWorkerDeps() (post.PostRepository, *embeddings.Client) {
+	return postRepo, embClient
 }
 
 func authMiddleware() gin.HandlerFunc {
