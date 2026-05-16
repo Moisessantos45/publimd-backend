@@ -704,16 +704,14 @@ func (r *PostgresRepository) ClaimPendingOutboxJobs(ctx context.Context, topic s
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		query := `
 			WITH picked AS (
-				SELECT o.id
-				FROM outboxes o
-				JOIN posts p ON p.id = o.aggregate_id
-				WHERE o.topic = @topic
-				  AND o.state = 'pending'
-				  AND o.available_at <= now()
-				  AND p.embedding IS NULL
-				ORDER BY o.created_at
+				SELECT id
+				FROM outboxes
+				WHERE topic = @topic
+				  AND state = 'pending'
+				  AND available_at <= now()
+				ORDER BY created_at
 				LIMIT @limit
-				FOR UPDATE OF o SKIP LOCKED
+				FOR UPDATE SKIP LOCKED
 			)
 			UPDATE outboxes o
 			SET state = 'processing'
