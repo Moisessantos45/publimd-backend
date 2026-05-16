@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/pgvector/pgvector-go"
+	"gorm.io/datatypes"
 )
 
 type Auth struct {
@@ -56,33 +57,57 @@ type StatePost struct {
 }
 
 type Post struct {
-	ID              uint64           `json:"id" gorm:"primaryKey"`
-	Slug            string           `json:"slug" gorm:"unique;not null;type:varchar(150)"`
-	Title           string           `json:"title" gorm:"not null;type:varchar(200)"`
-	Content         string           `json:"content" gorm:"type:text"`
-	AuthorID        uint64           `json:"author_id" gorm:"not null"`
-	Tags            JSONStringArray  `json:"tags" gorm:"type:jsonb;default:'[]'"`
-	Category        string           `json:"category" gorm:"type:varchar(100)"`
-	StateID         uint64           `json:"state_id" gorm:"not null"`
-	Embedding       *pgvector.Vector `json:"-" gorm:"column:embedding;type:vector(768)"`
-	SearchVector    string           `json:"-" gorm:"->;type:tsvector"`
-	FuzzyShort      string           `json:"-" gorm:"->;type:text"`
-	ContentClean    string           `json:"-" gorm:"column:content_clean;type:text"`
-	IsCollaborative bool             `json:"is_collaborative" gorm:"-"`
-	PermissionID    uint64           `json:"permission_id" gorm:"-"`
-	CreatedAt       time.Time        `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt       time.Time        `json:"updated_at" gorm:"autoUpdateTime"`
+	ID                 uint64           `json:"id" gorm:"primaryKey"`
+	Slug               string           `json:"slug" gorm:"unique;not null;type:varchar(150)"`
+	Title              string           `json:"title" gorm:"not null;type:varchar(200)"`
+	Content            string           `json:"content" gorm:"type:text"`
+	AuthorID           uint64           `json:"author_id" gorm:"not null"`
+	Tags               JSONStringArray  `json:"tags" gorm:"type:jsonb;default:'[]'"`
+	Category           string           `json:"category" gorm:"type:varchar(100)"`
+	StateID            uint64           `json:"state_id" gorm:"not null"`
+	Embedding          *pgvector.Vector `json:"-" gorm:"column:embedding;type:vector(768)"`
+	EmbeddingStatus    string           `json:"embedding_status" gorm:"type:varchar(20);not null;default:'pending'"`
+	EmbeddingVersion   uint64           `json:"-" gorm:"not null;default:1"`
+	EmbeddingError     *string          `json:"-" gorm:"type:text"`
+	EmbeddingUpdatedAt *time.Time       `json:"-"`
+	SearchVector       string           `json:"-" gorm:"->;type:tsvector"`
+	FuzzyShort         string           `json:"-" gorm:"->;type:text"`
+	ContentClean       string           `json:"-" gorm:"column:content_clean;type:text"`
+	IsCollaborative    bool             `json:"is_collaborative" gorm:"-"`
+	PermissionID       uint64           `json:"permission_id" gorm:"-"`
+	CreatedAt          time.Time        `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt          time.Time        `json:"updated_at" gorm:"autoUpdateTime"`
 
 	Author User      `json:"-" gorm:"foreignKey:AuthorID"`
 	State  StatePost `json:"-" gorm:"foreignKey:StateID"`
 }
 
 type PostInfoEmbedding struct {
-	ID           uint64          `json:"id" gorm:"primaryKey"`
-	Title        string          `json:"title" gorm:"not null;type:varchar(200)"`
-	Tags         JSONStringArray `json:"tags" gorm:"type:jsonb;default:'[]'"`
-	Category     string          `json:"category" gorm:"type:varchar(100)"`
-	ContentClean string          `json:"-" gorm:"column:content_clean;type:text"`
+	ID               uint64          `json:"id" gorm:"primaryKey"`
+	Title            string          `json:"title" gorm:"not null;type:varchar(200)"`
+	Tags             JSONStringArray `json:"tags" gorm:"type:jsonb;default:'[]'"`
+	Category         string          `json:"category" gorm:"type:varchar(100)"`
+	ContentClean     string          `json:"-" gorm:"column:content_clean;type:text"`
+	EmbeddingVersion uint64          `json:"-" gorm:"column:embedding_version"`
+}
+
+type PostEmbeddingMeta struct {
+	ID               uint64 `gorm:"column:id"`
+	EmbeddingVersion uint64 `gorm:"column:embedding_version"`
+	EmbeddingStatus  string `gorm:"column:embedding_status"`
+}
+
+type Outbox struct {
+	ID          string         `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	Topic       string         `gorm:"type:varchar(100);not null;index"`
+	AggregateID uint64         `gorm:"not null;index"`
+	Payload     datatypes.JSON `gorm:"type:jsonb;not null"`
+	State       string         `gorm:"type:varchar(20);not null;default:'pending';index"`
+	Attempts    int            `gorm:"not null;default:0"`
+	AvailableAt time.Time      `gorm:"not null;default:now();index"`
+	LastError   *string        `gorm:"type:text"`
+	ProcessedAt *time.Time
+	CreatedAt   time.Time
 }
 
 type Permission struct {
@@ -142,9 +167,9 @@ var Models = []any{
 	&Collaborator{},
 	&Like{},
 	&Comment{},
+	&Outbox{},
 }
 
-// agregar esytado que sea para cuando el usuario crea el post y solo lo pueden ver las personas que tenga el link asi como youtube que puedes colocar un video como privado y solo lo pueden ver las personas que tengan el link, esto es para que el usuario pueda compartir su post con otras personas sin necesidad de publicarlo completamente, esto se puede llamar "unlisted" o "privado con enlace" o algo similar
 var StatePosts = []StatePost{
 	{Name: "draft"},
 	{Name: "published"},

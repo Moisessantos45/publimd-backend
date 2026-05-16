@@ -2,9 +2,12 @@ package post
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"publimd/internal/shared/models"
 	"strings"
+	"time"
 
 	"github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
@@ -147,6 +150,7 @@ func (r *PostgresRepository) GetAllPublic(
 				FROM posts p
 				WHERE p.state_id = 2
 				  AND p.embedding IS NOT NULL
+				  AND p.embedding_status = 'ready'
 				  AND (p.embedding <=> ?) <= ?
 				ORDER BY p.embedding <=> ?, p.created_at DESC
 				LIMIT ?
@@ -207,6 +211,7 @@ func (r *PostgresRepository) GetAllPublic(
 				FROM posts p
 				WHERE p.state_id = 2
 				  AND p.embedding IS NOT NULL
+				  AND p.embedding_status = 'ready'
 				  AND (p.embedding <=> ?) <= ?
 				ORDER BY p.embedding <=> ?, p.created_at DESC
 				LIMIT ?
@@ -372,6 +377,7 @@ func (r *PostgresRepository) GetAllPublic(
 			FROM posts p
 			WHERE p.state_id = 2
 			  AND p.embedding IS NOT NULL
+			  AND p.embedding_status = 'ready'
 			  AND (p.embedding <=> ?) <= ?
 		`
 		countArgs = []any{vec, semanticMaxDist}
@@ -390,6 +396,7 @@ func (r *PostgresRepository) GetAllPublic(
 			JOIN users u ON u.id = p.author_id
 			WHERE p.state_id = 2
 			  AND p.embedding IS NOT NULL
+			  AND p.embedding_status = 'ready'
 			  AND (p.embedding <=> ?) <= ?
 			ORDER BY p.embedding <=> ?, p.created_at DESC
 			LIMIT ? OFFSET ?
@@ -497,7 +504,7 @@ func (r *PostgresRepository) GetInfoEmbeddingByID(ctx context.Context, id uint64
 	var post models.PostInfoEmbedding
 
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT id, title, tags, category, content_clean
+		SELECT id, title, tags, category, content_clean, embedding_version
 		FROM posts
 		WHERE id = ?
 	`, id).Scan(&post).Error
@@ -605,7 +612,7 @@ func (r *PostgresRepository) GetBySlugPublic(ctx context.Context, slug string) (
 			CONCAT(u.name, ' ', u.last_name) AS author
 		FROM posts p
 		JOIN users u ON u.id = p.author_id
-		WHERE p.slug = ? AND p.state_id = 2 OR p.state_id = 5
+		WHERE p.slug = ? AND (p.state_id = 2 OR p.state_id = 5)
 	`, slug).Scan(&post).Error
 
 	if err != nil {
@@ -614,6 +621,8 @@ func (r *PostgresRepository) GetBySlugPublic(ctx context.Context, slug string) (
 		}
 		return nil, err
 	}
+
+	log.Printf("Queried post by slug '%s': %s", slug, post.Title)
 
 	return &post, nil
 }
@@ -659,4 +668,149 @@ func (r *PostgresRepository) UpdateState(ctx context.Context, id uint64, stateID
 	}
 
 	return nil
+}
+
+func (r *PostgresRepository) InsertOutbox(ctx context.Context, event *models.Outbox) error {
+	return r.db.WithContext(ctx).Create(event).Error
+}
+
+func (r *PostgresRepository) MarkEmbeddingPendingAndBumpVersion(ctx context.Context, postID uint64) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Post{}).
+		Where("id = ?", postID).
+		Updates(map[string]any{
+			"embedding_status":  "pending",
+			"embedding_error":   nil,
+			"embedding_version": gorm.Expr("embedding_version + 1"),
+		}).Error
+}
+
+func (r *PostgresRepository) GetEmbeddingMetaByID(ctx context.Context, postID uint64) (*models.PostEmbeddingMeta, error) {
+	var row models.PostEmbeddingMeta
+	err := r.db.WithContext(ctx).
+		Model(&models.Post{}).
+		Select("id, embedding_version, embedding_status").
+		Where("id = ?", postID).
+		Take(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *PostgresRepository) ClaimPendingOutboxJobs(ctx context.Context, topic string, limit int) ([]models.Outbox, error) {
+	var jobs []models.Outbox
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		query := `
+			WITH picked AS (
+				SELECT o.id
+				FROM outboxes o
+				JOIN posts p ON p.id = o.aggregate_id
+				WHERE o.topic = @topic
+				  AND o.state = 'pending'
+				  AND o.available_at <= now()
+				  AND p.embedding IS NULL
+				ORDER BY o.created_at
+				LIMIT @limit
+				FOR UPDATE OF o SKIP LOCKED
+			)
+			UPDATE outboxes o
+			SET state = 'processing'
+			FROM picked
+			WHERE o.id = picked.id
+			RETURNING o.*;
+		`
+		return tx.Raw(query,
+			sql.Named("topic", topic),
+			sql.Named("limit", limit),
+		).Scan(&jobs).Error
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func (r *PostgresRepository) MarkOutboxDone(ctx context.Context, jobID string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&models.Outbox{}).
+		Where("id = ?", jobID).
+		Updates(map[string]any{
+			"state":        "done",
+			"processed_at": &now,
+			"last_error":   nil,
+		}).Error
+}
+
+func (r *PostgresRepository) MarkOutboxDoneTx(ctx context.Context, jobID string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&models.Outbox{}).
+		Where("id = ?", jobID).
+		Updates(map[string]any{
+			"state":        "done",
+			"processed_at": &now,
+			"last_error":   nil,
+		}).Error
+}
+
+func (r *PostgresRepository) RescheduleOutbox(ctx context.Context, jobID string, attempts int, nextTime time.Time, errMsg string) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Outbox{}).
+		Where("id = ?", jobID).
+		Updates(map[string]any{
+			"state":        "pending",
+			"attempts":     attempts,
+			"available_at": nextTime,
+			"last_error":   errMsg,
+		}).Error
+}
+
+func (r *PostgresRepository) MarkOutboxDead(ctx context.Context, jobID string, errMsg string) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Outbox{}).
+		Where("id = ?", jobID).
+		Updates(map[string]any{
+			"state":      "dead",
+			"last_error": errMsg,
+		}).Error
+}
+
+func (r *PostgresRepository) UpdateEmbeddingTx(ctx context.Context, postID uint64, vec any) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Post{}).
+		Where("id = ?", postID).
+		Update("embedding", vec).Error
+}
+
+func (r *PostgresRepository) SetEmbeddingReadyTx(ctx context.Context, postID uint64) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&models.Post{}).
+		Where("id = ?", postID).
+		Updates(map[string]any{
+			"embedding_status":     "ready",
+			"embedding_error":      nil,
+			"embedding_updated_at": &now,
+		}).Error
+}
+
+func (r *PostgresRepository) SetEmbeddingFailed(ctx context.Context, postID uint64, errMsg string) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Post{}).
+		Where("id = ?", postID).
+		Updates(map[string]any{
+			"embedding_status": "failed",
+			"embedding_error":  errMsg,
+		}).Error
+}
+
+func (r *PostgresRepository) SetEmbeddingProcessing(ctx context.Context, postID uint64) error {
+	return r.db.WithContext(ctx).
+		Model(&models.Post{}).
+		Where("id = ?", postID).
+		Update("embedding_status", "processing").Error
 }

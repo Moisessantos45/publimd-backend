@@ -2,6 +2,7 @@ package post
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"publimd/internal/shared/models"
 	"publimd/internal/shared/utils"
 	"strings"
+	"time"
 
 	"github.com/pgvector/pgvector-go"
 )
@@ -216,24 +218,36 @@ func (uc *PostUseCase) Create(ctx context.Context, authID uint64, post *models.P
 		return fmt.Errorf("error validating post data: %v", err)
 	}
 
+	newPost.EmbeddingStatus = "pending"
+	newPost.EmbeddingVersion = 1
+
 	err = uc.repo.WithTransaction(func(repo *PostgresRepository) error {
-		if err := uc.repo.Create(ctx, newPost); err != nil {
+		if err := repo.Create(ctx, newPost); err != nil {
 			return err
 		}
 
-		data := embeddings.NewPostEmbeddingRequest(newPost.ID, newPost.Title, newPost.ContentClean, newPost.Tags, newPost.Category)
-
-		response, err := uc.cl.GeneratePostEmbedding(ctx, data)
+		payload, err := json.Marshal(map[string]any{
+			"post_id":           newPost.ID,
+			"embedding_version": newPost.EmbeddingVersion,
+		})
 		if err != nil {
-			return fmt.Errorf("error generating embedding: %v", err)
+			return err
 		}
 
-		vec := pgvector.NewVector(response.Embedding)
-
-		if err := uc.repo.UpdateEmbedding(ctx, newPost.ID, vec); err != nil {
-			return fmt.Errorf("error saving embedding: %v", err)
+		outbox := &models.Outbox{
+			Topic:       "post.embedding.generate",
+			AggregateID: newPost.ID,
+			Payload:     payload,
+			State:       "pending",
+			AvailableAt: time.Now(),
 		}
 
+		if err := repo.InsertOutbox(ctx, outbox); err != nil {
+			return err
+		}
+
+		log.Printf("[outbox] job enqueued: post_id=%d embedding_version=%d op=create",
+			newPost.ID, newPost.EmbeddingVersion)
 		return nil
 	})
 
@@ -274,29 +288,41 @@ func (uc *PostUseCase) Update(ctx context.Context, id uint64, authID uint64, pos
 	updateData := BuildPostUpdateData(post, isEqualTitle)
 
 	err = uc.repo.WithTransaction(func(repo *PostgresRepository) error {
-
-		if err := uc.repo.Update(ctx, id, updateData); err != nil {
+		if err := repo.Update(ctx, id, updateData); err != nil {
 			return err
 		}
 
-		updatedPost, err := uc.repo.GetInfoEmbeddingByID(ctx, id)
+		if err := repo.MarkEmbeddingPendingAndBumpVersion(ctx, id); err != nil {
+			return err
+		}
+
+		meta, err := repo.GetEmbeddingMetaByID(ctx, id)
 		if err != nil {
-			return fmt.Errorf("error fetching updated post: %v", err)
+			return fmt.Errorf("error fetching embedding meta: %v", err)
 		}
 
-		data := embeddings.NewPostEmbeddingRequest(updatedPost.ID, updatedPost.Title, updatedPost.ContentClean, updatedPost.Tags, updatedPost.Category)
-
-		response, err := uc.cl.GeneratePostEmbedding(ctx, data)
+		payload, err := json.Marshal(map[string]any{
+			"post_id":           id,
+			"embedding_version": meta.EmbeddingVersion,
+		})
 		if err != nil {
-			return fmt.Errorf("error generating embedding: %v", err)
+			return err
 		}
 
-		vec := pgvector.NewVector(response.Embedding)
-
-		if err := uc.repo.UpdateEmbedding(ctx, updatedPost.ID, vec); err != nil {
-			return fmt.Errorf("error saving embedding: %v", err)
+		outbox := &models.Outbox{
+			Topic:       "post.embedding.generate",
+			AggregateID: id,
+			Payload:     payload,
+			State:       "pending",
+			AvailableAt: time.Now(),
 		}
 
+		if err := repo.InsertOutbox(ctx, outbox); err != nil {
+			return err
+		}
+
+		log.Printf("[outbox] job enqueued: post_id=%d embedding_version=%d op=update",
+			id, meta.EmbeddingVersion)
 		return nil
 	})
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"publimd/config"
 	"publimd/config/db"
+	"publimd/internal/features/post"
 	"publimd/internal/routes"
 	"publimd/internal/shared/middleware"
 	"publimd/internal/shared/socket"
@@ -22,10 +23,9 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"golang.org/x/time/rate"
 )
 
-var ctx = context.Background()
+
 
 func main() {
 	if err := godotenv.Load(); err != nil {
@@ -78,7 +78,7 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	r.Use(middleware.RateLimiterMiddleware(rate.Every(time.Second/2), 30))
+	//r.Use(middleware.RateLimiterMiddleware(rate.Every(time.Second/2), 30))
 
 	// iniciliza las dependencias y casos de uso
 	routes.Init()
@@ -122,6 +122,15 @@ func main() {
 		middleware.StartCleanup()
 	})
 
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	pRepo, embCl := routes.GetWorkerDeps()
+	w := post.NewOutboxWorker(pRepo, embCl)
+	wg.Go(func() {
+		if err := w.Run(workerCtx); err != nil && err != context.Canceled {
+			log.Printf("outbox worker exited with error: %v", err)
+		}
+	})
+
 	log.Println("Server starting on :4104...")
 	srv := &http.Server{
 		Addr:    ":4104",
@@ -139,10 +148,11 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
+	workerCancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutCtx); err != nil {
 		log.Fatal("Server forced to shutdown: ", err)
 	}
 
